@@ -28,9 +28,9 @@ func (r *ProductRepository) ListProducts(ctx context.Context, userID int, req mo
             upper := req.Search + "\uffff"
             args = append(args, req.Search, upper)
         } else {
-            // partial は FULLTEXT 優先、fallback で LIKE
-            countQuery += " WHERE MATCH(name, description) AGAINST (? IN NATURAL LANGUAGE MODE)"
-            args = append(args, req.Search)
+            countQuery += " WHERE (name LIKE ? OR description LIKE ?)"
+            searchPattern := "%" + req.Search + "%"
+            args = append(args, searchPattern, searchPattern)
         }
     }
 
@@ -52,8 +52,9 @@ func (r *ProductRepository) ListProducts(ctx context.Context, userID int, req mo
             upper := req.Search + "\uffff"
             dataArgs = append(dataArgs, req.Search, upper)
         } else {
-            dataQuery += " WHERE MATCH(name, description) AGAINST (? IN NATURAL LANGUAGE MODE)"
-            dataArgs = append(dataArgs, req.Search)
+            dataQuery += " WHERE (name LIKE ? OR description LIKE ?)"
+            searchPattern := "%" + req.Search + "%"
+            dataArgs = append(dataArgs, searchPattern, searchPattern)
         }
     }
 

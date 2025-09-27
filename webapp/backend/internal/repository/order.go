@@ -120,9 +120,8 @@ func (r *OrderRepository) ListOrders(ctx context.Context, userID int, req model.
             upper := req.Search + "\uffff"
             args = append(args, req.Search, upper)
         } else {
-            // partial は FULLTEXT 優先
-            countQuery += " AND EXISTS (SELECT 1 FROM products p WHERE p.product_id = o.product_id AND MATCH(p.name, p.description) AGAINST (? IN NATURAL LANGUAGE MODE))"
-            args = append(args, req.Search)
+            countQuery += " AND EXISTS (SELECT 1 FROM products p WHERE p.product_id = o.product_id AND p.name LIKE ?)"
+            args = append(args, "%"+req.Search+"%")
         }
     }
 
@@ -146,8 +145,8 @@ func (r *OrderRepository) ListOrders(ctx context.Context, userID int, req model.
             upper := req.Search + "\uffff"
             dataArgs = append(dataArgs, req.Search, upper)
         } else {
-            dataQuery += " AND MATCH(p.name, p.description) AGAINST (? IN NATURAL LANGUAGE MODE)"
-            dataArgs = append(dataArgs, req.Search)
+            dataQuery += " AND p.name LIKE ?"
+            dataArgs = append(dataArgs, "%"+req.Search+"%")
         }
     }
 
