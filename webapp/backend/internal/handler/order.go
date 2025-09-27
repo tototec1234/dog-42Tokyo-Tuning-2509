@@ -1,12 +1,12 @@
 package handler
 
 import (
-	"backend/internal/middleware"
-	"backend/internal/model"
-	"backend/internal/service"
-	"encoding/json"
-	"log"
-	"net/http"
+    "backend/internal/middleware"
+    "backend/internal/model"
+    "backend/internal/service"
+    "encoding/json"
+    "log"
+    "net/http"
 )
 
 type OrderHandler struct {
@@ -31,35 +31,17 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// デフォルト値の設定
-	if req.Page <= 0 {
-		req.Page = 1
-	}
-    if req.PageSize <= 0 {
-        req.PageSize = 20
-    }
-    if req.PageSize > 100 {
-        req.PageSize = 100
-    }
-    if req.SortField == "" {
-        req.SortField = "order_id"
-    }
-    // 限制排序欄位白名單
-    switch req.SortField {
-    case "order_id", "product_id", "created_at", "shipped_status", "arrived_at":
-        // ok
-    default:
-        req.SortField = "order_id"
-    }
-    if req.SortOrder == "" {
-        req.SortOrder = "desc"
-    }
-    if req.SortOrder != "asc" && req.SortOrder != "desc" {
-        req.SortOrder = "desc"
-    }
-	if req.Type != "" && req.Type != "partial" && req.Type != "prefix" {
-		req.Type = "partial"
-	}
+    req.Normalize(model.ListRequestConfig{
+        DefaultPage:       1,
+        DefaultPageSize:   20,
+        MaxPageSize:       100,
+        DefaultSortField:  "order_id",
+        DefaultSortOrder:  "DESC",
+        AllowedSortFields: []string{"order_id", "product_id", "created_at", "shipped_status", "arrived_at"},
+        AllowedSortOrders: []string{"ASC", "DESC"},
+        DefaultType:       "partial",
+        AllowedTypes:      []string{"partial", "prefix"},
+    })
 
 	orders, total, err := h.OrderSvc.FetchOrders(r.Context(), userID, req)
 	if err != nil {
