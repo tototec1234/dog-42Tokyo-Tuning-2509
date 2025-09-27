@@ -56,55 +56,60 @@ func (s *RobotService) UpdateOrderStatus(ctx context.Context, orderID int64, new
 }
 
 func selectOrdersForDelivery(ctx context.Context, orders []model.Order, robotID string, robotCapacity int) (model.DeliveryPlan, error) {
+	// 動的計画法を使用して0-1ナップサック問題を効率的に解決
 	n := len(orders)
-	bestValue := 0
-	var bestSet []model.Order
-	steps := 0
-	checkEvery := 16384
+	if n == 0 {
+		return model.DeliveryPlan{RobotID: robotID, TotalWeight: 0, TotalValue: 0, Orders: []model.Order{}}, nil
+	}
 
-	var dfs func(i, curWeight, curValue int, curSet []model.Order) bool
-	dfs = func(i, curWeight, curValue int, curSet []model.Order) bool {
-		if curWeight > robotCapacity {
-			return false
+	// DPテーブル: dp[i][w] = 最初のi個のアイテムから重さw以内で得られる最大価値
+	// メモリ効率のために1次元配列を使用
+	dp := make([]int, robotCapacity+1)
+	selected := make([][]bool, n)
+	for i := range selected {
+		selected[i] = make([]bool, robotCapacity+1)
+	}
+
+	// DP計算
+	for i := 0; i < n; i++ {
+		order := orders[i]
+		// 逆順に更新して、同じアイテムを複数回使わないようにする
+		for w := robotCapacity; w >= order.Weight; w-- {
+			if dp[w-order.Weight] + order.Value > dp[w] {
+				dp[w] = dp[w-order.Weight] + order.Value
+				selected[i][w] = true
+			}
 		}
-		steps++
-		if checkEvery > 0 && steps%checkEvery == 0 {
+
+		// 定期的にコンテキストのキャンセルを確認
+		if i%100 == 0 {
 			select {
 			case <-ctx.Done():
-				return true
+				return model.DeliveryPlan{}, ctx.Err()
 			default:
 			}
 		}
-		if i == n {
-			if curValue > bestValue {
-				bestValue = curValue
-				bestSet = append([]model.Order{}, curSet...)
-			}
-			return false
-		}
-
-		if dfs(i+1, curWeight, curValue, curSet) {
-			return true
-		}
-
-		order := orders[i]
-		return dfs(i+1, curWeight+order.Weight, curValue+order.Value, append(curSet, order))
 	}
 
-	canceled := dfs(0, 0, 0, nil)
-	if canceled {
-		return model.DeliveryPlan{}, ctx.Err()
-	}
+	// 最適解を復元
+	var bestSet []model.Order
+	w := robotCapacity
+	totalWeight := 0
+	totalValue := dp[robotCapacity]
 
-	var totalWeight int
-	for _, o := range bestSet {
-		totalWeight += o.Weight
+	for i := n - 1; i >= 0; i-- {
+		if selected[i][w] {
+			order := orders[i]
+			bestSet = append(bestSet, order)
+			totalWeight += order.Weight
+			w -= order.Weight
+		}
 	}
 
 	return model.DeliveryPlan{
 		RobotID:     robotID,
 		TotalWeight: totalWeight,
-		TotalValue:  bestValue,
+		TotalValue:  totalValue,
 		Orders:      bestSet,
 	}, nil
 }
