@@ -75,15 +75,17 @@ func (r *OrderRepository) ListOrders(ctx context.Context, userID int, req model.
     `
 	args := []interface{}{userID}
 
-	if req.Search != "" {
-		if req.Type == "prefix" {
-			countQuery += " AND p.name LIKE ?"
-			args = append(args, req.Search+"%")
-		} else {
-			countQuery += " AND p.name LIKE ?"
-			args = append(args, "%"+req.Search+"%")
-		}
-	}
+    if req.Search != "" {
+        if req.Type == "prefix" {
+            // 前綴は範囲検索
+            countQuery += " AND p.name >= ? AND p.name < ?"
+            upper := req.Search + "\uffff"
+            args = append(args, req.Search, upper)
+        } else {
+            countQuery += " AND p.name LIKE ?"
+            args = append(args, "%"+req.Search+"%")
+        }
+    }
 
 	err := r.db.GetContext(ctx, &total, countQuery, args...)
 	if err != nil {
@@ -99,32 +101,38 @@ func (r *OrderRepository) ListOrders(ctx context.Context, userID int, req model.
     `
 	dataArgs := []interface{}{userID}
 
-	if req.Search != "" {
-		if req.Type == "prefix" {
-			dataQuery += " AND p.name LIKE ?"
-			dataArgs = append(dataArgs, req.Search+"%")
-		} else {
-			dataQuery += " AND p.name LIKE ?"
-			dataArgs = append(dataArgs, "%"+req.Search+"%")
-		}
-	}
+    if req.Search != "" {
+        if req.Type == "prefix" {
+            dataQuery += " AND p.name >= ? AND p.name < ?"
+            upper := req.Search + "\uffff"
+            dataArgs = append(dataArgs, req.Search, upper)
+        } else {
+            dataQuery += " AND p.name LIKE ?"
+            dataArgs = append(dataArgs, "%"+req.Search+"%")
+        }
+    }
 
 	// ソート条件を構築
 	var orderBy string
-	switch req.SortField {
-	case "product_name":
-		orderBy = "p.name " + req.SortOrder
-	case "created_at":
-		orderBy = "o.created_at " + req.SortOrder
-	case "shipped_status":
-		orderBy = "o.shipped_status " + req.SortOrder
-	case "arrived_at":
-		orderBy = "o.arrived_at " + req.SortOrder
-	case "order_id":
-		fallthrough
-	default:
-		orderBy = "o.order_id " + req.SortOrder
-	}
+    // ソート順のホワイトリスト化
+    allowedOrder := req.SortOrder
+    if allowedOrder != "ASC" && allowedOrder != "DESC" {
+        allowedOrder = "ASC"
+    }
+    switch req.SortField {
+    case "product_name":
+        orderBy = "p.name " + allowedOrder
+    case "created_at":
+        orderBy = "o.created_at " + allowedOrder
+    case "shipped_status":
+        orderBy = "o.shipped_status " + allowedOrder
+    case "arrived_at":
+        orderBy = "o.arrived_at " + allowedOrder
+    case "order_id":
+        fallthrough
+    default:
+        orderBy = "o.order_id " + allowedOrder
+    }
 
 	dataQuery += " ORDER BY " + orderBy + ", o.order_id ASC"
 	dataQuery += " LIMIT ? OFFSET ?"
