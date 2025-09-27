@@ -23,19 +23,14 @@ func (r *ProductRepository) ListProducts(ctx context.Context, userID int, req mo
     args := []interface{}{}
 
     if req.Search != "" {
-        // 前綴検索を範囲検索で最適化可能だが、ここでは仕様維持のため LIKE を使用
-        // プレフィックス検索は name >= prefix AND name < prefix_max に置換可能
         if req.Type == "prefix" {
-            // 範囲検索へ置換（データ内容は不変）
             countQuery += " WHERE name >= ? AND name < ?"
-            // 最大値生成：prefix + 最高の補足文字 (U+FFFF) ではなく、次の文字境界を用いる
-            // ここでは簡易に prefix + "\uffff" を上界として使用
             upper := req.Search + "\uffff"
             args = append(args, req.Search, upper)
         } else {
-            countQuery += " WHERE (name LIKE ? OR description LIKE ?)"
-            searchPattern := "%" + req.Search + "%"
-            args = append(args, searchPattern, searchPattern)
+            // partial は FULLTEXT 優先、fallback で LIKE
+            countQuery += " WHERE MATCH(name, description) AGAINST (? IN NATURAL LANGUAGE MODE)"
+            args = append(args, req.Search)
         }
     }
 
@@ -57,9 +52,8 @@ func (r *ProductRepository) ListProducts(ctx context.Context, userID int, req mo
             upper := req.Search + "\uffff"
             dataArgs = append(dataArgs, req.Search, upper)
         } else {
-            dataQuery += " WHERE (name LIKE ? OR description LIKE ?)"
-            searchPattern := "%" + req.Search + "%"
-            dataArgs = append(dataArgs, searchPattern, searchPattern)
+            dataQuery += " WHERE MATCH(name, description) AGAINST (? IN NATURAL LANGUAGE MODE)"
+            dataArgs = append(dataArgs, req.Search)
         }
     }
 

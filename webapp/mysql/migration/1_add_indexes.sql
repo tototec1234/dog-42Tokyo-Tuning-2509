@@ -37,6 +37,32 @@ SET @sql := IF(@idx_exists = 0,
   'SELECT 1');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
+-- 複合: products(name, product_id) for prefix 範囲 + 安定ソート
+SET @idx_exists := (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'products'
+    AND INDEX_NAME = 'idx_products_name_id'
+);
+SET @sql := IF(@idx_exists = 0,
+  'CREATE INDEX idx_products_name_id ON products (name, product_id);',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- FULLTEXT: products(name, description) for partial 検索の高速化
+SET @idx_exists := (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'products'
+    AND INDEX_NAME = 'idx_products_fulltext_name_desc'
+);
+SET @sql := IF(@idx_exists = 0,
+  'CREATE FULLTEXT INDEX idx_products_fulltext_name_desc ON products (name, description);',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
 -- orders(user_id, created_at) for 履歴一覧の WHERE user_id + ORDER/LIMIT
 SET @idx_exists := (
   SELECT COUNT(1) FROM INFORMATION_SCHEMA.STATISTICS
@@ -64,6 +90,16 @@ SET @idx_exists := (
 );
 SET @sql := IF(@idx_exists = 0,
   'CREATE INDEX idx_orders_product_id ON orders (product_id);',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- 複合: orders(user_id, order_id) for 履歴の ORDER BY + LIMIT
+SET @idx_exists := (
+  SELECT COUNT(1) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND INDEX_NAME = 'idx_orders_user_order'
+);
+SET @sql := IF(@idx_exists = 0,
+  'CREATE INDEX idx_orders_user_order ON orders (user_id, order_id);',
   'SELECT 1');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 

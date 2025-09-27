@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+    "strings"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -29,6 +30,45 @@ func (r *OrderRepository) Create(ctx context.Context, order *model.Order) (strin
 		return "", err
 	}
 	return fmt.Sprintf("%d", id), nil
+}
+
+// 複数レコードを一括挿入し、生成された order_id の配列を返す
+func (r *OrderRepository) CreateBulk(ctx context.Context, userID int, productID int, quantity int) ([]int64, error) {
+    if quantity <= 0 {
+        return nil, nil
+    }
+
+    // VALUES プレースホルダーを構築
+    // (user_id, product_id, 'shipping', NOW()) を quantity 回
+    valuesPlaceholders := make([]string, 0, quantity)
+    args := make([]interface{}, 0, quantity*2)
+    for i := 0; i < quantity; i++ {
+        valuesPlaceholders = append(valuesPlaceholders, "(?, ?, 'shipping', NOW())")
+        args = append(args, userID, productID)
+    }
+
+    query := "INSERT INTO orders (user_id, product_id, shipped_status, created_at) VALUES " +
+        sqlx.Rebind(sqlx.QUESTION, fmt.Sprintf("%s", strings.Join(valuesPlaceholders, ",")))
+
+    // 注意: mysql の LastInsertId は最初の ID を返す。RowsAffected から連番を算出
+    result, err := r.db.ExecContext(ctx, query, args...)
+    if err != nil {
+        return nil, err
+    }
+    firstID, err := result.LastInsertId()
+    if err != nil {
+        return nil, err
+    }
+    rows, err := result.RowsAffected()
+    if err != nil {
+        return nil, err
+    }
+
+    ids := make([]int64, 0, rows)
+    for i := int64(0); i < rows; i++ {
+        ids = append(ids, firstID+i)
+    }
+    return ids, nil
 }
 
 // 複数の注文IDのステータスを一括で更新
@@ -76,13 +116,13 @@ func (r *OrderRepository) ListOrders(ctx context.Context, userID int, req model.
 
     if req.Search != "" {
         if req.Type == "prefix" {
-            // 前綴は範囲検索（EXISTS で製品名フィルタ）
             countQuery += " AND EXISTS (SELECT 1 FROM products p WHERE p.product_id = o.product_id AND p.name >= ? AND p.name < ?)"
             upper := req.Search + "\uffff"
             args = append(args, req.Search, upper)
         } else {
-            countQuery += " AND EXISTS (SELECT 1 FROM products p WHERE p.product_id = o.product_id AND p.name LIKE ?)"
-            args = append(args, "%"+req.Search+"%")
+            // partial は FULLTEXT 優先
+            countQuery += " AND EXISTS (SELECT 1 FROM products p WHERE p.product_id = o.product_id AND MATCH(p.name, p.description) AGAINST (? IN NATURAL LANGUAGE MODE))"
+            args = append(args, req.Search)
         }
     }
 
@@ -106,8 +146,8 @@ func (r *OrderRepository) ListOrders(ctx context.Context, userID int, req model.
             upper := req.Search + "\uffff"
             dataArgs = append(dataArgs, req.Search, upper)
         } else {
-            dataQuery += " AND p.name LIKE ?"
-            dataArgs = append(dataArgs, "%"+req.Search+"%")
+            dataQuery += " AND MATCH(p.name, p.description) AGAINST (? IN NATURAL LANGUAGE MODE)"
+            dataArgs = append(dataArgs, req.Search)
         }
     }
 
