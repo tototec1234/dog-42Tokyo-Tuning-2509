@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jmoiron/sqlx"
@@ -100,8 +101,17 @@ func (s *Server) Run() {
 		appPort = "8080"
 	}
 
+	server := &http.Server{
+		Addr:              ":" + appPort,
+		Handler:           s.Router,
+		ReadHeaderTimeout: 2 * time.Second,
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+
 	log.Printf("Starting server on :%s", appPort)
-	if err := http.ListenAndServe(":"+appPort, s.Router); err != nil {
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }
