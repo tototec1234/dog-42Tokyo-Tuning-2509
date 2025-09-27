@@ -1,4 +1,4 @@
-# 42Tokyo Tuning the backend Contest 2025
+de  ]='[-p0'o9;i utvrc] 42Tokyo Tuning the backend Contest 2025
 
 ## ディレクトリ構造
 ```
