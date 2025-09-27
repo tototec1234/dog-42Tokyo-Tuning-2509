@@ -11,6 +11,9 @@ CREATE TABLE `users` (
   `user_name` VARCHAR(255) NOT NULL
   );
 
+-- 索引：登入與查詢 user_name
+CREATE INDEX idx_users_user_name ON users(user_name);
+
 -- LOAD DATA INFILE '/docker-entrypoint-initdb.d/csv/users.csv'
 -- INTO TABLE users
 -- FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES TERMINATED BY '\n'
@@ -47,6 +50,11 @@ CREATE TABLE orders (
     FOREIGN KEY (product_id) REFERENCES products(product_id) ON DELETE CASCADE
 );
 
+-- 索引：常見查詢與排序
+CREATE INDEX idx_orders_user_created ON orders(user_id, created_at);
+CREATE INDEX idx_orders_status ON orders(shipped_status);
+CREATE INDEX idx_orders_product_id ON orders(product_id);
+
 -- LOAD DATA INFILE '/docker-entrypoint-initdb.d/csv/orders.csv'
 -- INTO TABLE orders
 -- FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES TERMINATED BY '\n'
@@ -62,3 +70,6 @@ CREATE TABLE `user_sessions` (
   UNIQUE KEY `session_uuid` (`session_uuid`),
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
+
+-- 索引：session 驗證
+CREATE INDEX idx_sessions_uuid_expires ON user_sessions(session_uuid, expires_at);

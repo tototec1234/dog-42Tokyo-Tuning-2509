@@ -66,23 +66,22 @@ func (r *OrderRepository) GetShippingOrders(ctx context.Context) ([]model.Order,
 func (r *OrderRepository) ListOrders(ctx context.Context, userID int, req model.ListRequest) ([]model.Order, int, error) {
 	var total int
 
-	// 総件数を取得
-	countQuery := `
+    // 総件数を取得（検索なしの場合は JOIN 回避）
+    countQuery := `
         SELECT COUNT(*)
         FROM orders o
-        JOIN products p ON o.product_id = p.product_id
         WHERE o.user_id = ?
     `
-	args := []interface{}{userID}
+    args := []interface{}{userID}
 
     if req.Search != "" {
         if req.Type == "prefix" {
-            // 前綴は範囲検索
-            countQuery += " AND p.name >= ? AND p.name < ?"
+            // 前綴は範囲検索（EXISTS で製品名フィルタ）
+            countQuery += " AND EXISTS (SELECT 1 FROM products p WHERE p.product_id = o.product_id AND p.name >= ? AND p.name < ?)"
             upper := req.Search + "\uffff"
             args = append(args, req.Search, upper)
         } else {
-            countQuery += " AND p.name LIKE ?"
+            countQuery += " AND EXISTS (SELECT 1 FROM products p WHERE p.product_id = o.product_id AND p.name LIKE ?)"
             args = append(args, "%"+req.Search+"%")
         }
     }
