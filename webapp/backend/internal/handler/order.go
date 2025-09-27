@@ -35,15 +35,28 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 	if req.Page <= 0 {
 		req.Page = 1
 	}
-	if req.PageSize <= 0 {
-		req.PageSize = 20
-	}
-	if req.SortField == "" {
-		req.SortField = "order_id"
-	}
-	if req.SortOrder == "" {
-		req.SortOrder = "desc"
-	}
+    if req.PageSize <= 0 {
+        req.PageSize = 20
+    }
+    if req.PageSize > 100 {
+        req.PageSize = 100
+    }
+    if req.SortField == "" {
+        req.SortField = "order_id"
+    }
+    // 限制排序欄位白名單
+    switch req.SortField {
+    case "order_id", "product_id", "created_at", "shipped_status", "arrived_at":
+        // ok
+    default:
+        req.SortField = "order_id"
+    }
+    if req.SortOrder == "" {
+        req.SortOrder = "desc"
+    }
+    if req.SortOrder != "asc" && req.SortOrder != "desc" {
+        req.SortOrder = "desc"
+    }
 	if req.Type != "" && req.Type != "partial" && req.Type != "prefix" {
 		req.Type = "partial"
 	}

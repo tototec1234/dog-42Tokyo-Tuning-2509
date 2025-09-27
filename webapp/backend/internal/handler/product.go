@@ -38,15 +38,28 @@ func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
 	if req.Page <= 0 {
 		req.Page = 1
 	}
-	if req.PageSize <= 0 {
-		req.PageSize = 20
-	}
-	if req.SortField == "" {
-		req.SortField = "product_id"
-	}
-	if req.SortOrder == "" {
-		req.SortOrder = "asc"
-	}
+    if req.PageSize <= 0 {
+        req.PageSize = 20
+    }
+    if req.PageSize > 100 {
+        req.PageSize = 100
+    }
+    if req.SortField == "" {
+        req.SortField = "product_id"
+    }
+    // 限制排序欄位白名單
+    switch req.SortField {
+    case "product_id", "name", "value", "weight":
+        // ok
+    default:
+        req.SortField = "product_id"
+    }
+    if req.SortOrder == "" {
+        req.SortOrder = "asc"
+    }
+    if req.SortOrder != "asc" && req.SortOrder != "desc" {
+        req.SortOrder = "asc"
+    }
 	req.Offset = (req.Page - 1) * req.PageSize
 
 	products, total, err := h.ProductSvc.FetchProducts(r.Context(), userID, req)
@@ -123,28 +136,7 @@ func (h *ProductHandler) GetImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ext := filepath.Ext(fullPath)
-	var contentType string
-	switch strings.ToLower(ext) {
-	case ".jpg", ".jpeg":
-		contentType = "image/jpeg"
-	case ".png":
-		contentType = "image/png"
-	case ".gif":
-		contentType = "image/gif"
-	case ".webp":
-		contentType = "image/webp"
-	default:
-		contentType = "application/octet-stream"
-	}
-	w.Header().Set("Content-Type", contentType)
-
-	data, err := os.ReadFile(fullPath)
-	if err != nil {
-		fmt.Printf("画像ファイルの読み込みに失敗: %s\n", fullPath)
-		http.Error(w, "画像の読み込みに失敗しました", http.StatusInternalServerError)
-		return
-	}
-
-	w.Write(data)
+    // 讓快取生效，Nginx 也會再覆蓋/補強
+    w.Header().Set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800")
+    http.ServeFile(w, r, fullPath)
 }
