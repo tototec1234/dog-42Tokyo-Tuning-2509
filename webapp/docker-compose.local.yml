@@ -10,7 +10,7 @@ services:
     environment:
       TRACE_ENABLED: "true"
       JAEGER_ENDPOINT: "http://jaeger:14268/api/traces"
-      TRACE_SAMPLE_RATIO: "1.0"
+      TRACE_SAMPLE_RATIO: "0.1"
       DATABASE_URL: user:password@tcp(db:3306)/42Tokyo2508-db
       PORT: 8080
     working_dir: /usr/src/backend
