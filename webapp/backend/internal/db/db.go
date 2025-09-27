@@ -17,7 +17,7 @@ func InitDBConnection() (*sqlx.DB, error) {
 	if dbUrl == "" {
 		dbUrl = "user:password@tcp(db:4306)/42Tokyo2508-db"
 	}
-	dsn := fmt.Sprintf("%s?charset=utf8mb4&parseTime=True&loc=Local", dbUrl)
+    dsn := fmt.Sprintf("%s?charset=utf8mb4&parseTime=True&loc=Local&timeout=3s&readTimeout=3s&writeTimeout=3s", dbUrl)
 	log.Printf(dsn)
 
 	driverName := telemetry.WrapSQLDriver("mysql")
@@ -37,9 +37,10 @@ func InitDBConnection() (*sqlx.DB, error) {
 	}
 	log.Println("Successfully connected to MySQL!")
 
-	dbConn.SetMaxOpenConns(100)
-	dbConn.SetMaxIdleConns(50)
-	dbConn.SetConnMaxLifetime(5 * time.Minute)
+    dbConn.SetMaxOpenConns(100)
+    dbConn.SetMaxIdleConns(50)
+    dbConn.SetConnMaxLifetime(5 * time.Minute)
+    dbConn.SetConnMaxIdleTime(2 * time.Minute)
 
 	return dbConn, nil
 }
