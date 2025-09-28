@@ -68,6 +68,7 @@ export default function ProductListPage() {
         .catch((error) => {
           console.error("商品データの取得に失敗しました:", error);
           setProducts([]);
+          setTotalCount(0);
         })
         .finally(() => setIsLoading(false));
     },
@@ -163,6 +164,7 @@ export default function ProductListPage() {
           component="img"
           src={getImageUrl(params.row.image)}
           alt={params.row.name}
+          loading="lazy"
           sx={{
             width: 60,
             height: 60,
