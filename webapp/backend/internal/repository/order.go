@@ -93,18 +93,19 @@ func (r *OrderRepository) GetShippingOrders(ctx context.Context, limit int) ([]m
 	}
 
 	var orders []model.Order
-	query := `
-	        SELECT
-	            o.order_id,
-	            p.weight,
-	            p.value
-	        FROM orders o
-	        JOIN products p ON o.product_id = p.product_id
-	        WHERE o.shipped_status = 'shipping'
-	        ORDER BY
-	            o.order_id ASC
-	        LIMIT ?
-	    `
+    query := `
+            SELECT
+                o.order_id,
+                p.weight,
+                p.value
+            FROM orders o
+            JOIN products p ON o.product_id = p.product_id
+            WHERE o.shipped_status = 'shipping'
+            ORDER BY
+                o.order_id ASC
+            LIMIT ?
+            FOR UPDATE SKIP LOCKED
+        `
 
 	err := r.db.SelectContext(ctx, &orders, query, limit)
 	return orders, err
