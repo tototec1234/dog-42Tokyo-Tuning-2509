@@ -65,7 +65,6 @@ func (s *RobotService) UpdateOrderStatus(ctx context.Context, orderID int64, new
 
 const (
 	contextCheckInterval = 96
-	maxOrdersForDP       = 1600
 )
 
 func selectOrdersForDelivery(ctx context.Context, orders []model.Order, robotID string, robotCapacity int) (model.DeliveryPlan, error) {
@@ -98,10 +97,6 @@ func selectOrdersForDelivery(ctx context.Context, orders []model.Order, robotID 
 		}
 		return leftDensity > rightDensity
 	})
-
-	if len(filtered) > maxOrdersForDP {
-		filtered = filtered[:maxOrdersForDP]
-	}
 
 	capacity := robotCapacity
 	dp := make([]int, capacity+1)
