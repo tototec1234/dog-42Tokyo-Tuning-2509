@@ -64,7 +64,7 @@ func (s *RobotService) UpdateOrderStatus(ctx context.Context, orderID int64, new
 }
 
 const (
-	contextCheckInterval = 96
+	contextCheckInterval = 256  // コンテキストチェックの頻度を減らしてパフォーマンスを向上させる
 )
 
 func selectOrdersForDelivery(ctx context.Context, orders []model.Order, robotID string, robotCapacity int) (model.DeliveryPlan, error) {

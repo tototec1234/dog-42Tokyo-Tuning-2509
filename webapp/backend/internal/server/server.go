@@ -107,10 +107,11 @@ func (s *Server) Run() {
 	server := &http.Server{
 		Addr:              ":" + appPort,
 		Handler:           s.Router,
-		ReadHeaderTimeout: 2 * time.Second,
-		ReadTimeout:       5 * time.Second,
-		WriteTimeout:      10 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: 1 * time.Second,
+		ReadTimeout:       3 * time.Second,
+		WriteTimeout:      5 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1MB
 	}
 
 	log.Printf("Starting server on :%s", appPort)

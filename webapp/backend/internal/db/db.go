@@ -37,11 +37,11 @@ func InitDBConnection() (*sqlx.DB, error) {
 	}
 	log.Println("Successfully connected to MySQL!")
 
-    // Increase pool for high concurrency in remote benchmark
-    dbConn.SetMaxOpenConns(200)
-    dbConn.SetMaxIdleConns(100)
-    dbConn.SetConnMaxLifetime(10 * time.Minute)
-    dbConn.SetConnMaxIdleTime(5 * time.Minute)
+    // Optimized pool for high concurrency in remote benchmark
+    dbConn.SetMaxOpenConns(400)
+    dbConn.SetMaxIdleConns(200)
+    dbConn.SetConnMaxLifetime(5 * time.Minute)
+    dbConn.SetConnMaxIdleTime(2 * time.Minute)
 
 	return dbConn, nil
 }
