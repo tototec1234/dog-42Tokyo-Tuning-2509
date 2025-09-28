@@ -73,13 +73,13 @@ SET @sql := IF(@idx_exists = 0,
   'SELECT 1');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
--- orders(shipped_status)
+-- orders(shipped_status, order_id) for robot GetShippingOrders with ORDER BY optimization
 SET @idx_exists := (
   SELECT COUNT(1) FROM INFORMATION_SCHEMA.STATISTICS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND INDEX_NAME = 'idx_orders_status'
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND INDEX_NAME = 'idx_orders_status_orderid'
 );
 SET @sql := IF(@idx_exists = 0,
-  "CREATE INDEX idx_orders_status ON orders (shipped_status);",
+  'CREATE INDEX idx_orders_status_orderid ON orders (shipped_status, order_id);',
   'SELECT 1');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
@@ -110,6 +110,16 @@ SET @idx_exists := (
 );
 SET @sql := IF(@idx_exists = 0,
   'CREATE INDEX idx_sessions_uuid_expires ON user_sessions (session_uuid, expires_at);',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- products(weight, value, product_id) for robot query optimization
+SET @idx_exists := (
+  SELECT COUNT(1) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND INDEX_NAME = 'idx_products_weight_value_id'
+);
+SET @sql := IF(@idx_exists = 0,
+  'CREATE INDEX idx_products_weight_value_id ON products (weight, value, product_id);',
   'SELECT 1');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
