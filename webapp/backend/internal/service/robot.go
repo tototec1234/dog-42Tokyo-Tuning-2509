@@ -1,13 +1,13 @@
 package service
 
 import (
-	"backend/internal/model"
-	"backend/internal/repository"
-	"backend/internal/service/utils"
-	"context"
-	"log"
-	"math"
-	"sort"
+    "backend/internal/model"
+    "backend/internal/repository"
+    "backend/internal/service/utils"
+    "context"
+    "log"
+    "math"
+    "sort"
 )
 
 type RobotService struct {
@@ -19,44 +19,76 @@ func NewRobotService(store *repository.Store) *RobotService {
 }
 
 func (s *RobotService) GenerateDeliveryPlan(ctx context.Context, robotID string, capacity int) (*model.DeliveryPlan, error) {
-	if capacity <= 0 {
-		return &model.DeliveryPlan{RobotID: robotID, Orders: []model.Order{}}, nil
-	}
+    if capacity <= 0 {
+        return &model.DeliveryPlan{RobotID: robotID, Orders: []model.Order{}}, nil
+    }
 
-	var plan model.DeliveryPlan
+    const fetchLimit = 2048
 
-	const fetchLimit = 2048
+    var candidateOrders []model.Order
+    // 1) 先以 DB 篩出符合容量的候選（減少應用層過濾與記憶體使用）
+    err := utils.WithTimeout(ctx, func(ctx context.Context) error {
+        // 讀取不需要在交易中進行
+        var err error
+        candidateOrders, err = s.store.OrderRepo.GetShippingOrders(ctx, capacity, fetchLimit)
+        return err
+    })
+    if err != nil {
+        return nil, err
+    }
 
-	err := utils.WithTimeout(ctx, func(ctx context.Context) error {
-		return s.store.ExecTx(ctx, func(txStore *repository.Store) error {
-			orders, err := txStore.OrderRepo.GetShippingOrders(ctx, fetchLimit)
-			if err != nil {
-				return err
-			}
+    // 2) 在交易外執行背包選擇，縮短鎖持有時間
+    plan, err := selectOrdersForDelivery(ctx, candidateOrders, robotID, capacity)
+    if err != nil {
+        return nil, err
+    }
 
-			plan, err = selectOrdersForDelivery(ctx, orders, robotID, capacity)
-			if err != nil {
-				return err
-			}
+    // 退化策略：若最佳值為空（理論上先前已過濾），保底回傳最輕且價值最高的一筆，降低空集合回傳機率
+    if len(plan.Orders) == 0 && len(candidateOrders) > 0 {
+        // 以 value/weight 密度最高者作為候補
+        bestIdx := 0
+        bestScore := -1.0
+        for i, o := range candidateOrders {
+            if o.Weight <= capacity && o.Weight > 0 {
+                score := float64(o.Value) / math.Max(1, float64(o.Weight))
+                if score > bestScore {
+                    bestScore = score
+                    bestIdx = i
+                }
+            }
+        }
+        if bestScore >= 0 {
+            chosen := candidateOrders[bestIdx]
+            plan = model.DeliveryPlan{
+                RobotID:     robotID,
+                TotalWeight: chosen.Weight,
+                TotalValue:  chosen.Value,
+                Orders:      []model.Order{{OrderID: chosen.OrderID, Weight: chosen.Weight, Value: chosen.Value}},
+            }
+        }
+    }
 
-			if len(plan.Orders) > 0 {
-				orderIDs := make([]int64, len(plan.Orders))
-				for i, order := range plan.Orders {
-					orderIDs[i] = order.OrderID
-				}
+    // 3) 僅在選出訂單時進入交易，進行狀態遷移（並加上前置狀態條件）
+    if len(plan.Orders) > 0 {
+        err = utils.WithTimeout(ctx, func(ctx context.Context) error {
+            return s.store.ExecTx(ctx, func(txStore *repository.Store) error {
+                orderIDs := make([]int64, len(plan.Orders))
+                for i, order := range plan.Orders {
+                    orderIDs[i] = order.OrderID
+                }
+                if err := txStore.OrderRepo.UpdateStatusesIfCurrent(ctx, orderIDs, "shipping", "delivering"); err != nil {
+                    return err
+                }
+                log.Printf("Updated status to 'delivering' for %d orders", len(orderIDs))
+                return nil
+            })
+        })
+        if err != nil {
+            return nil, err
+        }
+    }
 
-				if err := txStore.OrderRepo.UpdateStatuses(ctx, orderIDs, "delivering"); err != nil {
-					return err
-				}
-				log.Printf("Updated status to 'delivering' for %d orders", len(orderIDs))
-			}
-			return nil
-		})
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &plan, nil
+    return &plan, nil
 }
 
 func (s *RobotService) UpdateOrderStatus(ctx context.Context, orderID int64, newStatus string) error {
