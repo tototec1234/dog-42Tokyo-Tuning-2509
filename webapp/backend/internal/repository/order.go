@@ -86,11 +86,8 @@ func (r *OrderRepository) UpdateStatuses(ctx context.Context, orderIDs []int64, 
 	return err
 }
 
-// 配送中(shipped_status:shipping)の注文一覧を取得（容量で事前フィルタ）
-func (r *OrderRepository) GetShippingOrders(ctx context.Context, limit int, capacity int) ([]model.Order, error) {
-	if limit <= 0 {
-		limit = 256
-	}
+// 配送中(shipped_status:shipping)の注文一覧を取得（容量で事前フィルタ、件数制限なし）
+func (r *OrderRepository) GetShippingOrders(ctx context.Context, capacity int) ([]model.Order, error) {
 
 	var orders []model.Order
     query := `
@@ -104,11 +101,9 @@ func (r *OrderRepository) GetShippingOrders(ctx context.Context, limit int, capa
               AND p.weight > 0 AND p.weight <= ?
             ORDER BY
                 o.order_id ASC
-            LIMIT ?
-            FOR UPDATE SKIP LOCKED
         `
 
-    err := r.db.SelectContext(ctx, &orders, query, capacity, limit)
+    err := r.db.SelectContext(ctx, &orders, query, capacity)
 	return orders, err
 }
 

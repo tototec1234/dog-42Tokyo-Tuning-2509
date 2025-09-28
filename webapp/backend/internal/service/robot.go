@@ -25,11 +25,9 @@ func (s *RobotService) GenerateDeliveryPlan(ctx context.Context, robotID string,
 
 	var plan model.DeliveryPlan
 
-	const fetchLimit = 2048
-
 	err := utils.WithTimeout(ctx, func(ctx context.Context) error {
 		return s.store.ExecTx(ctx, func(txStore *repository.Store) error {
-            orders, err := txStore.OrderRepo.GetShippingOrders(ctx, fetchLimit, capacity)
+            orders, err := txStore.OrderRepo.GetShippingOrders(ctx, capacity)
 			if err != nil {
 				return err
 			}
