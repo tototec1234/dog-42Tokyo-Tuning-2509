@@ -86,8 +86,8 @@ func (r *OrderRepository) UpdateStatuses(ctx context.Context, orderIDs []int64, 
 	return err
 }
 
-// 配送中(shipped_status:shipping)の注文一覧を取得
-func (r *OrderRepository) GetShippingOrders(ctx context.Context, limit int) ([]model.Order, error) {
+// 配送中(shipped_status:shipping)の注文一覧を取得（容量で事前フィルタ）
+func (r *OrderRepository) GetShippingOrders(ctx context.Context, limit int, capacity int) ([]model.Order, error) {
 	if limit <= 0 {
 		limit = 256
 	}
@@ -101,13 +101,14 @@ func (r *OrderRepository) GetShippingOrders(ctx context.Context, limit int) ([]m
             FROM orders o
             JOIN products p ON o.product_id = p.product_id
             WHERE o.shipped_status = 'shipping'
+              AND p.weight > 0 AND p.weight <= ?
             ORDER BY
                 o.order_id ASC
             LIMIT ?
             FOR UPDATE SKIP LOCKED
         `
 
-	err := r.db.SelectContext(ctx, &orders, query, limit)
+    err := r.db.SelectContext(ctx, &orders, query, capacity, limit)
 	return orders, err
 }
 
@@ -123,16 +124,17 @@ func (r *OrderRepository) ListOrders(ctx context.Context, userID int, req model.
     `
 	args := []interface{}{userID}
 
-	if req.Search != "" {
-		if req.Type == "prefix" {
-			countQuery += " AND EXISTS (SELECT 1 FROM products p WHERE p.product_id = o.product_id AND p.name >= ? AND p.name < ?)"
-			upper := req.Search + "\uffff"
-			args = append(args, req.Search, upper)
-		} else {
-			countQuery += " AND EXISTS (SELECT 1 FROM products p WHERE p.product_id = o.product_id AND p.name LIKE ?)"
-			args = append(args, "%"+req.Search+"%")
-		}
-	}
+    if req.Search != "" {
+        if req.Type == "prefix" {
+            countQuery += " AND EXISTS (SELECT 1 FROM products p WHERE p.product_id = o.product_id AND p.name >= ? AND p.name < ?)"
+            upper := req.Search + "\uffff"
+            args = append(args, req.Search, upper)
+        } else {
+            // partial: FULLTEXT を活用
+            countQuery += " AND EXISTS (SELECT 1 FROM products p WHERE p.product_id = o.product_id AND MATCH(p.name, p.description) AGAINST (? IN NATURAL LANGUAGE MODE))"
+            args = append(args, req.Search)
+        }
+    }
 
 	err := r.db.GetContext(ctx, &total, countQuery, args...)
 	if err != nil {
@@ -148,16 +150,16 @@ func (r *OrderRepository) ListOrders(ctx context.Context, userID int, req model.
     `
 	dataArgs := []interface{}{userID}
 
-	if req.Search != "" {
-		if req.Type == "prefix" {
-			dataQuery += " AND p.name >= ? AND p.name < ?"
-			upper := req.Search + "\uffff"
-			dataArgs = append(dataArgs, req.Search, upper)
-		} else {
-			dataQuery += " AND p.name LIKE ?"
-			dataArgs = append(dataArgs, "%"+req.Search+"%")
-		}
-	}
+    if req.Search != "" {
+        if req.Type == "prefix" {
+            dataQuery += " AND p.name >= ? AND p.name < ?"
+            upper := req.Search + "\uffff"
+            dataArgs = append(dataArgs, req.Search, upper)
+        } else {
+            dataQuery += " AND MATCH(p.name, p.description) AGAINST (? IN NATURAL LANGUAGE MODE)"
+            dataArgs = append(dataArgs, req.Search)
+        }
+    }
 
 	// ソート条件を構築
 	var orderBy string
