@@ -86,26 +86,8 @@ func (r *OrderRepository) UpdateStatuses(ctx context.Context, orderIDs []int64, 
 	return err
 }
 
-// 複数の注文IDのステータスを一括で更新（現在のステータスに前置条件つき）
-// 競合時に想定外の上書きを避けるため、現在のステータスが一致するもののみ更新する
-func (r *OrderRepository) UpdateStatusesIfCurrent(ctx context.Context, orderIDs []int64, currentStatus string, newStatus string) error {
-    if len(orderIDs) == 0 {
-        return nil
-    }
-    // UPDATE ... WHERE order_id IN (...) AND shipped_status = currentStatus
-    // sqlx.In で IN 句を安全に構築
-    base := "UPDATE orders SET shipped_status = ? WHERE shipped_status = ? AND order_id IN (?)"
-    query, args, err := sqlx.In(base, newStatus, currentStatus, orderIDs)
-    if err != nil {
-        return err
-    }
-    query = r.db.Rebind(query)
-    _, err = r.db.ExecContext(ctx, query, args...)
-    return err
-}
-
-// 配送中(shipped_status:shipping)の注文一覧を取得（容量で前処理フィルタ）
-func (r *OrderRepository) GetShippingOrders(ctx context.Context, maxWeight int, limit int) ([]model.Order, error) {
+// 配送中(shipped_status:shipping)の注文一覧を取得
+func (r *OrderRepository) GetShippingOrders(ctx context.Context, limit int) ([]model.Order, error) {
 	if limit <= 0 {
 		limit = 256
 	}
@@ -118,14 +100,13 @@ func (r *OrderRepository) GetShippingOrders(ctx context.Context, maxWeight int, 
 	            p.value
 	        FROM orders o
 	        JOIN products p ON o.product_id = p.product_id
-            WHERE o.shipped_status = 'shipping'
-              AND p.weight > 0 AND p.weight <= ?
+	        WHERE o.shipped_status = 'shipping'
 	        ORDER BY
 	            o.order_id ASC
-            LIMIT ?
+	        LIMIT ?
 	    `
 
-    err := r.db.SelectContext(ctx, &orders, query, maxWeight, limit)
+	err := r.db.SelectContext(ctx, &orders, query, limit)
 	return orders, err
 }
 
