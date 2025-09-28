@@ -1,16 +1,16 @@
 package handler
 
 import (
-	"backend/internal/middleware"
-	"backend/internal/model"
-	"backend/internal/service"
-	"encoding/json"
-	"fmt"
-	"log"
-	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
+    "backend/internal/middleware"
+    "backend/internal/model"
+    "backend/internal/service"
+    "encoding/json"
+    "fmt"
+    "log"
+    "net/http"
+    "os"
+    "path/filepath"
+    "strings"
 )
 
 type ProductHandler struct {
@@ -35,32 +35,15 @@ func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Page <= 0 {
-		req.Page = 1
-	}
-    if req.PageSize <= 0 {
-        req.PageSize = 20
-    }
-    if req.PageSize > 100 {
-        req.PageSize = 100
-    }
-    if req.SortField == "" {
-        req.SortField = "product_id"
-    }
-    // 限制排序欄位白名單
-    switch req.SortField {
-    case "product_id", "name", "value", "weight":
-        // ok
-    default:
-        req.SortField = "product_id"
-    }
-    if req.SortOrder == "" {
-        req.SortOrder = "asc"
-    }
-    if req.SortOrder != "asc" && req.SortOrder != "desc" {
-        req.SortOrder = "asc"
-    }
-	req.Offset = (req.Page - 1) * req.PageSize
+    req.Normalize(model.ListRequestConfig{
+        DefaultPage:       1,
+        DefaultPageSize:   20,
+        MaxPageSize:       100,
+        DefaultSortField:  "product_id",
+        DefaultSortOrder:  "ASC",
+        AllowedSortFields: []string{"product_id", "name", "value", "weight"},
+        AllowedSortOrders: []string{"ASC", "DESC"},
+    })
 
 	products, total, err := h.ProductSvc.FetchProducts(r.Context(), userID, req)
 	if err != nil {
@@ -112,10 +95,10 @@ func (h *ProductHandler) CreateOrders(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ProductHandler) GetImage(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("画像リクエスト受信: %s\n", r.URL.String())
+    // noisy log を削減（負荷テスト中は大量アクセスされるため）
 	imagePath := r.URL.Query().Get("path")
 	if imagePath == "" {
-		fmt.Println("画像パスが空です")
+    fmt.Println("画像パスが空です")
 		http.Error(w, "画像パスが指定されていません", http.StatusBadRequest)
 		return
 	}

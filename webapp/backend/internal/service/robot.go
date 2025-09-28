@@ -6,6 +6,8 @@ import (
 	"backend/internal/service/utils"
 	"context"
 	"log"
+	"math"
+	"sort"
 )
 
 type RobotService struct {
@@ -17,18 +19,24 @@ func NewRobotService(store *repository.Store) *RobotService {
 }
 
 func (s *RobotService) GenerateDeliveryPlan(ctx context.Context, robotID string, capacity int) (*model.DeliveryPlan, error) {
+	if capacity <= 0 {
+		return &model.DeliveryPlan{RobotID: robotID, Orders: []model.Order{}}, nil
+	}
+
 	var plan model.DeliveryPlan
 
 	err := utils.WithTimeout(ctx, func(ctx context.Context) error {
 		return s.store.ExecTx(ctx, func(txStore *repository.Store) error {
-			orders, err := txStore.OrderRepo.GetShippingOrders(ctx)
+            orders, err := txStore.OrderRepo.GetShippingOrders(ctx, capacity)
 			if err != nil {
 				return err
 			}
+
 			plan, err = selectOrdersForDelivery(ctx, orders, robotID, capacity)
 			if err != nil {
 				return err
 			}
+
 			if len(plan.Orders) > 0 {
 				orderIDs := make([]int64, len(plan.Orders))
 				for i, order := range plan.Orders {
@@ -55,34 +63,66 @@ func (s *RobotService) UpdateOrderStatus(ctx context.Context, orderID int64, new
 	})
 }
 
+const (
+	contextCheckInterval = 256  // コンテキストチェックの頻度を減らしてパフォーマンスを向上させる
+)
+
 func selectOrdersForDelivery(ctx context.Context, orders []model.Order, robotID string, robotCapacity int) (model.DeliveryPlan, error) {
-	// 動的計画法を使用して0-1ナップサック問題を効率的に解決
-	n := len(orders)
-	if n == 0 {
-		return model.DeliveryPlan{RobotID: robotID, TotalWeight: 0, TotalValue: 0, Orders: []model.Order{}}, nil
+	if robotCapacity <= 0 {
+		return model.DeliveryPlan{RobotID: robotID, Orders: []model.Order{}}, nil
 	}
 
-	// DPテーブル: dp[i][w] = 最初のi個のアイテムから重さw以内で得られる最大価値
-	// メモリ効率のために1次元配列を使用
-	dp := make([]int, robotCapacity+1)
-	selected := make([][]bool, n)
-	for i := range selected {
-		selected[i] = make([]bool, robotCapacity+1)
+	filtered := make([]model.Order, 0, len(orders))
+	for _, order := range orders {
+		if order.Weight <= 0 || order.Weight > robotCapacity {
+			continue
+		}
+		filtered = append(filtered, order)
 	}
 
-	// DP計算
-	for i := 0; i < n; i++ {
-		order := orders[i]
-		// 逆順に更新して、同じアイテムを複数回使わないようにする
-		for w := robotCapacity; w >= order.Weight; w-- {
-			if dp[w-order.Weight] + order.Value > dp[w] {
-				dp[w] = dp[w-order.Weight] + order.Value
-				selected[i][w] = true
+	if len(filtered) == 0 {
+		return model.DeliveryPlan{RobotID: robotID, Orders: []model.Order{}}, nil
+	}
+
+	sort.Slice(filtered, func(i, j int) bool {
+		leftWeight := math.Max(1, float64(filtered[i].Weight))
+		rightWeight := math.Max(1, float64(filtered[j].Weight))
+		leftDensity := float64(filtered[i].Value) / leftWeight
+		rightDensity := float64(filtered[j].Value) / rightWeight
+		if leftDensity == rightDensity {
+			if filtered[i].Value == filtered[j].Value {
+				return filtered[i].OrderID < filtered[j].OrderID
+			}
+			return filtered[i].Value > filtered[j].Value
+		}
+		return leftDensity > rightDensity
+	})
+
+	capacity := robotCapacity
+	dp := make([]int, capacity+1)
+	parent := make([]int, capacity+1)
+	choice := make([]int, capacity+1)
+	for i := 0; i <= capacity; i++ {
+		parent[i] = -1
+		choice[i] = -1
+	}
+
+	for idx, order := range filtered {
+		weight := order.Weight
+		value := order.Value
+		if weight <= 0 {
+			continue
+		}
+		for w := capacity; w >= weight; w-- {
+			candidate := dp[w-weight] + value
+			if candidate > dp[w] {
+				dp[w] = candidate
+				parent[w] = w - weight
+				choice[w] = idx
 			}
 		}
 
-		// 定期的にコンテキストのキャンセルを確認
-		if i%100 == 0 {
+		if idx%contextCheckInterval == 0 {
 			select {
 			case <-ctx.Done():
 				return model.DeliveryPlan{}, ctx.Err()
@@ -91,25 +131,49 @@ func selectOrdersForDelivery(ctx context.Context, orders []model.Order, robotID 
 		}
 	}
 
-	// 最適解を復元
-	var bestSet []model.Order
-	w := robotCapacity
-	totalWeight := 0
-	totalValue := dp[robotCapacity]
+	bestValue := 0
+	bestWeight := 0
+	for w := 0; w <= capacity; w++ {
+		if dp[w] > bestValue {
+			bestValue = dp[w]
+			bestWeight = w
+		}
+	}
 
-	for i := n - 1; i >= 0; i-- {
-		if selected[i][w] {
-			order := orders[i]
-			bestSet = append(bestSet, order)
-			totalWeight += order.Weight
-			w -= order.Weight
+	if bestValue <= 0 {
+		return model.DeliveryPlan{RobotID: robotID, Orders: []model.Order{}}, nil
+	}
+
+	bestSet := make([]model.Order, 0)
+	weightCursor := bestWeight
+	for weightCursor > 0 && choice[weightCursor] != -1 {
+		idx := choice[weightCursor]
+		bestSet = append(bestSet, filtered[idx])
+		weightCursor = parent[weightCursor]
+	}
+
+	for i, j := 0, len(bestSet)-1; i < j; i, j = i+1, j-1 {
+		bestSet[i], bestSet[j] = bestSet[j], bestSet[i]
+	}
+
+	totalWeight := 0
+	for _, order := range bestSet {
+		totalWeight += order.Weight
+	}
+
+	sanitizedOrders := make([]model.Order, len(bestSet))
+	for i, order := range bestSet {
+		sanitizedOrders[i] = model.Order{
+			OrderID: order.OrderID,
+			Weight:  order.Weight,
+			Value:   order.Value,
 		}
 	}
 
 	return model.DeliveryPlan{
 		RobotID:     robotID,
 		TotalWeight: totalWeight,
-		TotalValue:  totalValue,
-		Orders:      bestSet,
+		TotalValue:  bestValue,
+		Orders:      sanitizedOrders,
 	}, nil
 }

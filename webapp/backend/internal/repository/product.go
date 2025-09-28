@@ -19,21 +19,21 @@ func (r *ProductRepository) ListProducts(ctx context.Context, userID int, req mo
 	var products []model.Product
 	var total int
 
-	// まず総件数を取得
-	countQuery := `SELECT COUNT(*) FROM products`
-	args := []interface{}{}
+    // まず総件数を取得
+    countQuery := `SELECT COUNT(*) FROM products`
+    args := []interface{}{}
 
-	if req.Search != "" {
-		if req.Type == "prefix" {
-			countQuery += " WHERE name >= ? AND name < ?"
-			upper := req.Search + "\uffff"
-			args = append(args, req.Search, upper)
-		} else {
-			countQuery += " WHERE (name LIKE ? OR description LIKE ?)"
-			searchPattern := "%" + req.Search + "%"
-			args = append(args, searchPattern, searchPattern)
-		}
-	}
+    if req.Search != "" {
+        if req.Type == "prefix" {
+            countQuery += " WHERE name >= ? AND name < ?"
+            upper := req.Search + "\uffff"
+            args = append(args, req.Search, upper)
+        } else {
+            countQuery += " WHERE (name LIKE ? OR description LIKE ?)"
+            searchPattern := "%" + req.Search + "%"
+            args = append(args, searchPattern, searchPattern)
+        }
+    }
 
 	err := r.db.GetContext(ctx, &total, countQuery, args...)
 	if err != nil {
@@ -41,23 +41,23 @@ func (r *ProductRepository) ListProducts(ctx context.Context, userID int, req mo
 	}
 
 	// ページング付きでデータを取得
-	dataQuery := `
+    dataQuery := `
         SELECT product_id, name, value, weight, image, description
         FROM products
     `
 	var dataArgs []interface{}
 
-	if req.Search != "" {
-		if req.Type == "prefix" {
-			dataQuery += " WHERE name >= ? AND name < ?"
-			upper := req.Search + "\uffff"
-			dataArgs = append(dataArgs, req.Search, upper)
-		} else {
-			dataQuery += " WHERE (name LIKE ? OR description LIKE ?)"
-			searchPattern := "%" + req.Search + "%"
-			dataArgs = append(dataArgs, searchPattern, searchPattern)
-		}
-	}
+    if req.Search != "" {
+        if req.Type == "prefix" {
+            dataQuery += " WHERE name >= ? AND name < ?"
+            upper := req.Search + "\uffff"
+            dataArgs = append(dataArgs, req.Search, upper)
+        } else {
+            dataQuery += " WHERE (name LIKE ? OR description LIKE ?)"
+            searchPattern := "%" + req.Search + "%"
+            dataArgs = append(dataArgs, searchPattern, searchPattern)
+        }
+    }
 
 	// ソートの列をホワイトリストで制限
 	sortField := sanitizeSortField(req.SortField, "product_id", map[string]string{

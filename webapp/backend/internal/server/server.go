@@ -56,7 +56,7 @@ func NewServer() (*Server, *sqlx.DB, error) {
 		}),
 	))
 
-	r.Get("/api/health", func(w http.ResponseWriter, r *http.Request) {
+    r.Get("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
@@ -80,12 +80,15 @@ func (s *Server) setupRoutes(
 ) {
 	s.Router.Post("/api/login", authHandler.Login)
 
-	s.Router.Route("/api/v1", func(r chi.Router) {
+    s.Router.Route("/api/v1", func(r chi.Router) {
 		r.Use(userAuthMW)
 		r.Post("/product", productHandler.List)
 		r.Post("/product/post", productHandler.CreateOrders)
 		r.Post("/orders", orderHandler.List)
-		r.Get("/image", productHandler.GetImage)
+        // 讓圖片改由 Nginx 直接服務，避免 Go 參與
+        r.Get("/image", func(w http.ResponseWriter, r *http.Request) {
+            http.NotFound(w, r)
+        })
 	})
 
 	s.Router.Route("/api/robot", func(r chi.Router) {
@@ -104,10 +107,11 @@ func (s *Server) Run() {
 	server := &http.Server{
 		Addr:              ":" + appPort,
 		Handler:           s.Router,
-		ReadHeaderTimeout: 2 * time.Second,
-		ReadTimeout:       5 * time.Second,
-		WriteTimeout:      10 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: 1 * time.Second,
+		ReadTimeout:       3 * time.Second,
+		WriteTimeout:      5 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1MB
 	}
 
 	log.Printf("Starting server on :%s", appPort)
